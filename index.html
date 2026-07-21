@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Amigos da Bola</title>
   
-  <!-- Configurações para Instalação no Celular (Ícone e PWA) -->
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" href="icon.png">
   <link rel="apple-touch-icon" href="icon.png">
@@ -45,15 +44,27 @@
       <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm text-center space-y-3">
         <h2 class="text-xs text-gray-500 uppercase font-bold tracking-wider">Próximo Jogo</h2>
         <p id="data-jogo-display" class="text-base font-bold text-gray-800">Carregando...</p>
+        <p id="local-jogo-display" class="text-xs text-gray-500 font-semibold">📍 Local: Arena Gruta</p>
         
         <div id="status-bloqueio" class="hidden bg-red-100 text-red-800 text-xs font-bold py-1.5 px-3 rounded-full inline-block">
           🔒 Confirmações encerradas (Jogo iniciado/passado)
         </div>
 
-        <div class="bg-green-50 p-3 rounded-lg border border-green-200 w-full">
-          <span class="text-xs text-green-800 font-medium">Confirmados</span>
-          <p id="total-confirmados" class="text-3xl font-black text-green-700">0</p>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-green-50 p-3 rounded-lg border border-green-200">
+            <span class="text-xs text-green-800 font-medium">Jogo</span>
+            <p id="total-confirmados" class="text-2xl font-black text-green-700">0</p>
+          </div>
+          <div class="bg-red-50 p-3 rounded-lg border border-red-200">
+            <span class="text-xs text-red-800 font-medium">Churrasco 🥩</span>
+            <p id="total-churrasco" class="text-2xl font-black text-red-700">0</p>
+          </div>
         </div>
+
+        <!-- Botão WhatsApp -->
+        <button onclick="compartilharWhatsApp()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow transition-all">
+          <span>📲</span> Compartilhar Lista Atualizada no WhatsApp
+        </button>
 
         <!-- Exibição do Resultado -->
         <div id="box-resultado" class="hidden bg-gray-50 p-3 rounded-lg border border-gray-200">
@@ -85,13 +96,14 @@
       <div id="painel-admin-presenca" class="hidden bg-yellow-50 p-4 rounded-xl border border-yellow-300 space-y-4">
         <h3 class="font-bold text-yellow-900 text-sm flex items-center gap-1">🛠️ Painel do Administrador</h3>
         
-        <!-- Calendário -->
+        <!-- Calendário e Local -->
         <div class="space-y-1">
           <label class="text-xs font-semibold text-gray-600">Agendar Novo Jogo (Reseta Confirmações):</label>
           <div class="flex gap-2">
             <input id="input-data-jogo" type="date" class="p-2 text-sm border rounded flex-1">
             <input id="input-hora-jogo" type="time" value="20:30" class="p-2 text-sm border rounded w-28">
           </div>
+          <input id="input-local-jogo" type="text" placeholder="Local do jogo (Ex: Arena Gruta)" value="Arena Gruta" class="w-full p-2 text-sm border rounded mt-1">
           <button onclick="salvarDataJogoNovo()" class="w-full bg-blue-600 text-white py-1.5 rounded font-bold text-xs mt-1">
             📅 Salvar e Iniciar Novo Jogo
           </button>
@@ -120,7 +132,7 @@
 
         <hr class="border-yellow-200">
 
-        <!-- Cadastrar Atleta com E-mail -->
+        <!-- Cadastrar Atleta -->
         <div class="space-y-1">
           <label class="text-xs font-semibold text-gray-600">Cadastrar Atleta:</label>
           <input id="novo-jogador-nome" type="text" placeholder="Nome do Jogador" class="w-full p-2 text-sm border rounded">
@@ -149,7 +161,7 @@
       <!-- Lista de Atletas Ordenada -->
       <div class="space-y-2">
         <h3 class="font-bold text-gray-700 text-sm">Lista de Atletas</h3>
-        <p class="text-[11px] text-gray-500">Clique em 👤 <b>Meu E-mail</b> no topo para vincular seu celular ao seu jogador.</p>
+        <p class="text-[11px] text-gray-500">Selecione <b>Vou ✓</b> ou <b>Ausente ✗</b>. Clique em 🥩 para incluir sua presença no churrasco!</p>
         <div id="lista-jogadores" class="space-y-2"></div>
       </div>
     </section>
@@ -215,7 +227,6 @@
     let jogoAtualConfig = null;
     let meuEmailSalvo = localStorage.getItem('meu_email_atleta') || '';
 
-    // --- CONTROLE DE E-MAIL DO ATLETA LOCAL ---
     function atualizarStatusEmail() {
       const el = document.getElementById('meu-email-status');
       if (meuEmailSalvo) {
@@ -235,7 +246,6 @@
       }
     }
 
-    // --- CARREGAR CONFIGURAÇÕES ---
     async function carregarConfiguracoes() {
       atualizarStatusEmail();
       const { data } = await db.from('config').select('*').eq('id', 1).single();
@@ -244,6 +254,8 @@
         senhaAdminAtual = data.senha_admin;
         document.getElementById('input-data-jogo').value = data.data_jogo || '';
         document.getElementById('input-hora-jogo').value = data.hora_jogo || '20:30';
+        document.getElementById('input-local-jogo').value = data.local_jogo || 'Arena Gruta';
+        document.getElementById('local-jogo-display').innerText = `📍 Local: ${data.local_jogo || 'Arena Gruta'}`;
         
         if (data.data_jogo && data.hora_jogo) {
           const [ano, mes, dia] = data.data_jogo.split('-');
@@ -278,17 +290,67 @@
       carregarJogadores();
     }
 
-    // --- SALVAR NOVO JOGO ---
+    function compartilharWhatsApp() {
+      if (!jogoAtualConfig || !jogoAtualConfig.data_jogo) return alert("Nenhum jogo agendado para compartilhar.");
+
+      const [ano, mes, dia] = jogoAtualConfig.data_jogo.split('-');
+      const dataFormatada = `${dia}/${mes}/${ano}`;
+      const horaFormatada = `${jogoAtualConfig.hora_jogo}:00`;
+      const local = jogoAtualConfig.local_jogo || 'Arena Gruta';
+
+      const goleiros = listaJogadoresCache.filter(j => j.confirmado === true && j.posicao === 'Goleiro');
+      const linha = listaJogadoresCache.filter(j => j.confirmado === true && j.posicao !== 'Goleiro');
+      const desfalques = listaJogadoresCache.filter(j => j.confirmado === false);
+
+      let texto = `Amigos da Bola FC x Amigos da bola\n`;
+      texto += `🗓️  ${dataFormatada}  ⏰  ${horaFormatada}\n`;
+      texto += `📍  Local: ${local}\n\n`;
+
+      texto += `👕  GOLEIROS\n`;
+      texto += `1. ${goleiros[0] ? goleiros[0].nome + (goleiros[0].churrasco ? ' - 🥩' : '') : ''}\n`;
+      texto += `2. ${goleiros[1] ? goleiros[1].nome + (goleiros[1].churrasco ? ' - 🥩' : '') : ''}\n\n`;
+
+      texto += `**Jogadores Confirmados\n`;
+      const totalConfirmadosLinha = Math.max(14, linha.length);
+      for (let i = 0; i < totalConfirmadosLinha; i++) {
+        const num = i + 1;
+        const j = linha[i];
+        if (j) {
+          texto += `${num} - ${j.nome}${j.churrasco ? ' - 🥩' : ''}\n`;
+        } else {
+          texto += `${num} - \n`;
+        }
+      }
+
+      texto += `\n**Desfalques\n`;
+      const totalDesfalques = Math.max(4, desfalques.length);
+      for (let i = 0; i < totalDesfalques; i++) {
+        const num = i + 1;
+        const j = desfalques[i];
+        if (j) {
+          texto += `${num} - ${j.nome}\n`;
+        } else {
+          texto += `${num} - \n`;
+        }
+      }
+
+      texto += `\n**gerado via Amigos da Bola`;
+
+      const linkWa = `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
+      window.open(linkWa, '_blank');
+    }
+
     async function salvarDataJogoNovo() {
       const novaData = document.getElementById('input-data-jogo').value;
       const novaHora = document.getElementById('input-hora-jogo').value;
+      const novoLocal = document.getElementById('input-local-jogo').value;
 
       if (!novaData || !novaHora) return alert('Selecione a data e horário do novo jogo!');
 
       if (!confirm("Confirmar o agendamento? O jogo atual será arquivado no Histórico e as presenças serão resetadas para o novo jogo.")) return;
 
       if (jogoAtualConfig && jogoAtualConfig.data_jogo) {
-        const confirmadosCount = listaJogadoresCache.filter(j => j.confirmado).length;
+        const confirmadosCount = listaJogadoresCache.filter(j => j.confirmado === true).length;
         await db.from('jogos').insert([{
           data_jogo: jogoAtualConfig.data_jogo,
           hora_jogo: jogoAtualConfig.hora_jogo,
@@ -303,19 +365,20 @@
       await db.from('config').update({ 
         data_jogo: novaData, 
         hora_jogo: novaHora,
+        local_jogo: novoLocal,
         time_a: [],
         time_b: [],
         gols_a: null,
         gols_b: null
       }).eq('id', 1);
 
-      await db.from('jogadores').update({ confirmado: false, time_manual: null }).neq('id', 0);
+      // Reseta a presença de todos para NULL (Pendente/Dúvida)
+      await db.from('jogadores').update({ confirmado: null, churrasco: false, time_manual: null }).neq('id', 0);
 
       carregarConfiguracoes();
       alert('Novo jogo agendado com sucesso!');
     }
 
-    // --- CARREGAR E EXCLUIR HISTÓRICO DE JOGOS ---
     async function carregarHistorico() {
       const { data, error } = await db.from('jogos').select('*').order('id', { ascending: false });
       if (error) return console.error(error);
@@ -373,39 +436,47 @@
       }
     }
 
-    // --- LÓGICA DE JOGADORES ---
+    // --- LÓGICA DE JOGADORES (3 ESTADOS: CONFIRMADO, AUSENTE, PENDENTE) ---
     async function carregarJogadores() {
       const { data, error } = await db.from('jogadores').select('*');
       if (error) return console.error(error);
 
+      // Ordenação: 1º Confirmados (true), 2º Pendentes (null), 3º Ausentes (false)
       listaJogadoresCache = data.sort((a, b) => {
-        if (a.confirmado === b.confirmado) {
+        const peso = (val) => val === true ? 1 : (val === null ? 2 : 3);
+        if (peso(a.confirmado) === peso(b.confirmado)) {
           return a.nome.localeCompare(b.nome);
         }
-        return a.confirmado ? -1 : 1;
+        return peso(a.confirmado) - peso(b.confirmado);
       });
 
       const lista = document.getElementById('lista-jogadores');
       lista.innerHTML = '';
       let confirmados = 0;
+      let totalChurras = 0;
 
       listaJogadoresCache.forEach(j => {
-        if (j.confirmado) confirmados++;
+        if (j.confirmado === true) confirmados++;
+        if (j.churrasco) totalChurras++;
 
         const ehSeuPerfil = meuEmailSalvo && j.email && (meuEmailSalvo === j.email.toLowerCase());
         const podeAlterar = (isAdmin || ehSeuPerfil) && !jogoEncerrado;
 
         lista.innerHTML += `
-          <div class="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border ${!j.confirmado ? 'opacity-70' : ''} ${ehSeuPerfil ? 'ring-2 ring-green-500' : ''}">
+          <div class="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border ${j.confirmado === false ? 'opacity-50' : ''} ${ehSeuPerfil ? 'ring-2 ring-green-500' : ''}">
             <div>
               <p class="font-bold text-gray-800 text-sm">
                 ${j.nome} ${j.posicao === 'Goleiro' ? '🧤' : ''} 
+                ${j.churrasco ? '🥩' : ''}
                 ${ehSeuPerfil ? '<span class="text-[10px] bg-green-100 text-green-800 px-1.5 py-0.5 rounded font-normal">Você</span>' : ''}
               </p>
-              <p class="text-xs text-gray-500">${j.posicao || 'Linha'} ${j.email ? `• ${j.email}` : ''}</p>
+              <p class="text-xs text-gray-500">
+                ${j.posicao || 'Linha'} 
+                ${j.confirmado === null ? '<span class="text-yellow-600 font-semibold">• Pendente</span>' : ''}
+              </p>
             </div>
-            <div class="flex items-center gap-2">
-              ${isAdmin && j.confirmado ? `
+            <div class="flex items-center gap-1.5">
+              ${isAdmin && j.confirmado === true ? `
                 <select onchange="definirTimeManual(${j.id}, this.value)" class="text-xs border rounded p-1 bg-yellow-50">
                   <option value="" ${!j.time_manual ? 'selected' : ''}>S/ Time</option>
                   <option value="Time A" ${j.time_manual === 'Time A' ? 'selected' : ''}>Time A</option>
@@ -413,31 +484,67 @@
                 </select>
               ` : ''}
 
+              <!-- Botão Churrasco -->
               <button 
                 ${!podeAlterar ? 'disabled' : ''} 
-                onclick="alternarPresenca(${j.id}, ${!j.confirmado}, '${j.email || ''}')" 
-                class="px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  j.confirmado ? 'bg-green-600 text-white shadow' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                } ${!podeAlterar ? 'opacity-50 cursor-not-allowed' : ''}">
-                ${j.confirmado ? 'Vou ✓' : 'Ausente ✗'}
+                onclick="alternarChurrasco(${j.id}, ${!j.churrasco}, '${j.email || ''}')" 
+                title="Marcar Churrasco"
+                class="p-1.5 rounded-lg text-xs font-bold border ${j.churrasco ? 'bg-red-100 border-red-300 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-400'} ${!podeAlterar ? 'opacity-50 cursor-not-allowed' : ''}">
+                🥩
               </button>
+
+              <!-- Botões Selecionáveis: VOU / AUSENTE -->
+              <button 
+                ${!podeAlterar ? 'disabled' : ''} 
+                onclick="definirStatusPresenca(${j.id}, true, '${j.email || ''}')" 
+                class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  j.confirmado === true ? 'bg-green-600 text-white shadow' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                } ${!podeAlterar ? 'opacity-50 cursor-not-allowed' : ''}">
+                Vou ✓
+              </button>
+
+              <button 
+                ${!podeAlterar ? 'disabled' : ''} 
+                onclick="definirStatusPresenca(${j.id}, false, '${j.email || ''}')" 
+                class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  j.confirmado === false ? 'bg-red-600 text-white shadow' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                } ${!podeAlterar ? 'opacity-50 cursor-not-allowed' : ''}">
+                Fora ✗
+              </button>
+
               ${isAdmin ? `<button onclick="deletarJogador(${j.id})" class="text-red-500 text-xs px-1">🗑️</button>` : ''}
             </div>
           </div>
         `;
       });
       document.getElementById('total-confirmados').innerText = confirmados;
+      document.getElementById('total-churrasco').innerText = totalChurras;
     }
 
-    async function alternarPresenca(id, status, emailJogador) {
+    async function definirStatusPresenca(id, status, emailJogador) {
       if (jogoEncerrado && !isAdmin) return alert('As confirmações foram encerradas!');
       
       const ehSeuPerfil = meuEmailSalvo && emailJogador && (meuEmailSalvo === emailJogador.toLowerCase());
       if (!isAdmin && !ehSeuPerfil) {
-        return alert('Você só pode alterar a confirmação do seu próprio perfil! Clique em "👤 Meu E-mail" no topo para identificar seu dispositivo.');
+        return alert('Você só pode alterar o seu próprio perfil!');
       }
 
-      await db.from('jogadores').update({ confirmado: status, time_manual: null }).eq('id', id);
+      const updateData = { confirmado: status, time_manual: null };
+      if (status === false) updateData.churrasco = false; // Se marcar fora, tira do churrasco
+
+      await db.from('jogadores').update(updateData).eq('id', id);
+      carregarJogadores();
+    }
+
+    async function alternarChurrasco(id, status, emailJogador) {
+      if (jogoEncerrado && !isAdmin) return alert('As confirmações foram encerradas!');
+      
+      const ehSeuPerfil = meuEmailSalvo && emailJogador && (meuEmailSalvo === emailJogador.toLowerCase());
+      if (!isAdmin && !ehSeuPerfil) {
+        return alert('Você só pode alterar o seu próprio perfil!');
+      }
+
+      await db.from('jogadores').update({ churrasco: status }).eq('id', id);
       carregarJogadores();
     }
 
@@ -446,7 +553,7 @@
     }
 
     async function salvarTimesManuais() {
-      const confirmados = listaJogadoresCache.filter(j => j.confirmado);
+      const confirmados = listaJogadoresCache.filter(j => j.confirmado === true);
       const timeA = confirmados.filter(j => j.time_manual === 'Time A').map(j => j.nome);
       const timeB = confirmados.filter(j => j.time_manual === 'Time B').map(j => j.nome);
 
@@ -460,7 +567,7 @@
     }
 
     async function dividirTimesAleatorio() {
-      const confirmados = listaJogadoresCache.filter(j => j.confirmado);
+      const confirmados = listaJogadoresCache.filter(j => j.confirmado === true);
       if (confirmados.length < 2) return alert('Pelo menos 2 jogadores confirmados são necessários!');
 
       const goleiros = confirmados.filter(j => j.posicao === 'Goleiro').map(j => j.nome).sort(() => Math.random() - 0.5);
@@ -501,7 +608,7 @@
 
       if (!nome) return alert('Digite o nome do atleta');
 
-      await db.from('jogadores').insert([{ nome, email: email ? email.trim().toLowerCase() : null, posicao, confirmado: false }]);
+      await db.from('jogadores').insert([{ nome, email: email ? email.trim().toLowerCase() : null, posicao, confirmado: null, churrasco: false }]);
       document.getElementById('novo-jogador-nome').value = '';
       document.getElementById('novo-jogador-email').value = '';
       carregarJogadores();
