@@ -435,6 +435,7 @@
       }
     }
 
+    // --- LÓGICA DE JOGADORES (E-mail visível apenas no Modo Admin) ---
     async function carregarJogadores() {
       const { data, error } = await db.from('jogadores').select('*');
       if (error) return console.error(error);
@@ -469,7 +470,7 @@
               </p>
               <p class="text-xs text-gray-500">
                 ${j.posicao || 'Linha'} 
-                ${j.email ? `• ${j.email}` : ''}
+                ${isAdmin && j.email ? `• ${j.email}` : ''}
                 ${j.confirmado === null ? '<span class="text-yellow-600 font-semibold">• Pendente</span>' : ''}
               </p>
             </div>
@@ -522,7 +523,6 @@
       document.getElementById('total-churrasco').innerText = totalChurras;
     }
 
-    // --- FUNÇÃO PARA EDITAR CADASTRO DO ATLETA (ADMIN) ---
     async function editarJogador(id) {
       if (!isAdmin) return;
 
@@ -530,7 +530,7 @@
       if (!jogador) return;
 
       const novoNome = prompt("Nome do Atleta:", jogador.nome);
-      if (novoNome === null) return; // Cancelou
+      if (novoNome === null) return;
 
       const novoEmail = prompt("E-mail do Atleta:", jogador.email || "");
       if (novoEmail === null) return;
