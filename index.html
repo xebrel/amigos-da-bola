@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Amigos da Bola</title>
+  
+  <!-- Configurações para Instalação no Celular (Ícone e PWA) -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="apple-touch-icon" href="icon.png">
+  <meta name="theme-color" content="#15803d">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-100 font-sans pb-12">
+
+  <!-- Cabeçalho -->
+  <header class="bg-green-700 text-white p-4 shadow-md flex justify-between items-center max-w-md mx-auto">
+    <h1 class="text-xl font-bold flex items-center gap-2">⚽ Amigos da Bola</h1>
+    <div class="flex items-center gap-2">
+      <button onclick="definirMeuEmail()" id="btn-meu-perfil" class="bg-green-800 hover:bg-green-900 text-xs px-2.5 py-1.5 rounded-full border border-green-600">
+        👤 <span id="meu-email-status">Meu E-mail</span>
+      </button>
+      <button onclick="toggleAdmin()" id="btn-admin-toggle" class="bg-green-800 hover:bg-green-900 text-xs px-2.5 py-1.5 rounded-full border border-green-600">
+        ⚙️ <span id="admin-status-text">Admin</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Navegação -->
+  <div class="flex justify-center border-b bg-white shadow-sm sticky top-0 z-10 max-w-md mx-auto">
+    <button id="btn-presenca" onclick="trocarAba('presenca')" class="flex-1 py-3 font-bold border-b-4 border-green-600 text-green-700 text-xs">Próximo Jogo</button>
+    <button id="btn-historico" onclick="trocarAba('historico')" class="flex-1 py-3 font-bold border-b-4 border-transparent text-gray-500 text-xs">Histórico</button>
+    <button id="btn-financeiro" onclick="trocarAba('financeiro')" style="display: none;" class="flex-1 py-3 font-bold border-b-4 border-transparent text-gray-500 text-xs">Caixa (Admin)</button>
+  </div>
+
+  <main class="max-w-md mx-auto p-4 space-y-4">
+
+    <!-- ================= TELA JOGO / PRESENÇA ================= -->
+    <section id="aba-presenca" class="space-y-4">
+      
+      <!-- Placar do Jogo / Status -->
+      <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm text-center space-y-3">
+        <h2 class="text-xs text-gray-500 uppercase font-bold tracking-wider">Próximo Jogo</h2>
+        <p id="data-jogo-display" class="text-base font-bold text-gray-800">Carregando...</p>
+        
+        <div id="status-bloqueio" class="hidden bg-red-100 text-red-800 text-xs font-bold py-1.5 px-3 rounded-full inline-block">
+          🔒 Confirmações encerradas (Jogo iniciado/passado)
+        </div>
+
+        <div class="bg-green-50 p-3 rounded-lg border border-green-200 w-full">
+          <span class="text-xs text-green-800 font-medium">Confirmados</span>
+          <p id="total-confirmados" class="text-3xl font-black text-green-700">0</p>
+        </div>
+
+        <!-- Exibição do Resultado -->
+        <div id="box-resultado" class="hidden bg-gray-50 p-3 rounded-lg border border-gray-200">
+          <p class="text-xs text-gray-500 uppercase font-bold mb-1">Placar Final</p>
+          <div class="flex justify-center items-center gap-4 text-2xl font-black text-gray-800">
+            <span>Time A <span id="placar-a" class="text-green-600">0</span></span>
+            <span>X</span>
+            <span><span id="placar-b" class="text-blue-600">0</span> Time B</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Divisão de Times Pública -->
+      <div id="box-times" class="hidden bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-3">
+        <h3 class="font-bold text-gray-700 text-sm text-center border-b pb-2">⚔️ Divisão das Equipes</h3>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-green-50 p-3 rounded-lg border border-green-200">
+            <h4 class="font-bold text-green-800 text-xs text-center mb-2">TIME A</h4>
+            <ul id="lista-time-a" class="text-xs text-gray-700 space-y-1"></ul>
+          </div>
+          <div class="bg-blue-50 p-3 rounded-lg border border-blue-200">
+            <h4 class="font-bold text-blue-800 text-xs text-center mb-2">TIME B</h4>
+            <ul id="lista-time-b" class="text-xs text-gray-700 space-y-1"></ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Painel do Admin -->
+      <div id="painel-admin-presenca" class="hidden bg-yellow-50 p-4 rounded-xl border border-yellow-300 space-y-4">
+        <h3 class="font-bold text-yellow-900 text-sm flex items-center gap-1">🛠️ Painel do Administrador</h3>
+        
+        <!-- Calendário -->
+        <div class="space-y-1">
+          <label class="text-xs font-semibold text-gray-600">Agendar Novo Jogo (Reseta Confirmações):</label>
+          <div class="flex gap-2">
+            <input id="input-data-jogo" type="date" class="p-2 text-sm border rounded flex-1">
+            <input id="input-hora-jogo" type="time" value="20:30" class="p-2 text-sm border rounded w-28">
+          </div>
+          <button onclick="salvarDataJogoNovo()" class="w-full bg-blue-600 text-white py-1.5 rounded font-bold text-xs mt-1">
+            📅 Salvar e Iniciar Novo Jogo
+          </button>
+        </div>
+
+        <hr class="border-yellow-200">
+
+        <!-- Opções de Sorteio / Divisão de Times -->
+        <div class="space-y-2">
+          <label class="text-xs font-semibold text-gray-600">Divisão de Equipes:</label>
+          <div class="flex gap-2">
+            <button onclick="dividirTimesAleatorio()" class="w-1/2 bg-green-600 text-white py-1.5 rounded font-bold text-xs">
+              🎲 Sortear Aleatório
+            </button>
+            <button onclick="salvarTimesManuais()" class="w-1/2 bg-blue-600 text-white py-1.5 rounded font-bold text-xs">
+              💾 Salvar Seleção Manual
+            </button>
+          </div>
+
+          <div class="flex gap-2 items-center pt-2">
+            <input id="input-gols-a" type="number" placeholder="Gols Time A" class="w-1/2 p-2 text-xs border rounded">
+            <input id="input-gols-b" type="number" placeholder="Gols Time B" class="w-1/2 p-2 text-xs border rounded">
+          </div>
+          <button onclick="salvarResultado()" class="w-full bg-gray-800 text-white py-1.5 rounded font-bold text-xs">Salvar Placar Final</button>
+        </div>
+
+        <hr class="border-yellow-200">
+
+        <!-- Cadastrar Atleta com E-mail -->
+        <div class="space-y-1">
+          <label class="text-xs font-semibold text-gray-600">Cadastrar Atleta:</label>
+          <input id="novo-jogador-nome" type="text" placeholder="Nome do Jogador" class="w-full p-2 text-sm border rounded">
+          <div class="flex gap-2">
+            <input id="novo-jogador-email" type="email" placeholder="E-mail do Jogador" class="flex-1 p-2 text-sm border rounded">
+            <select id="novo-jogador-pos" class="w-28 p-2 text-sm border rounded bg-white">
+              <option value="Linha">Linha</option>
+              <option value="Goleiro">Goleiro</option>
+            </select>
+            <button onclick="adicionarJogador()" class="bg-green-600 text-white px-3 py-2 rounded font-bold text-sm">+</button>
+          </div>
+        </div>
+
+        <hr class="border-yellow-200">
+
+        <!-- Senha Admin -->
+        <div class="space-y-1">
+          <label class="text-xs font-semibold text-gray-600">Alterar Senha do Admin:</label>
+          <div class="flex gap-2">
+            <input id="input-nova-senha" type="password" placeholder="Nova Senha" class="flex-1 p-2 text-sm border rounded">
+            <button onclick="alterarSenhaAdmin()" class="bg-gray-800 text-white px-3 py-2 rounded font-bold text-xs">Atualizar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista de Atletas Ordenada -->
+      <div class="space-y-2">
+        <h3 class="font-bold text-gray-700 text-sm">Lista de Atletas</h3>
+        <p class="text-[11px] text-gray-500">Clique em 👤 <b>Meu E-mail</b> no topo para vincular seu celular ao seu jogador.</p>
+        <div id="lista-jogadores" class="space-y-2"></div>
+      </div>
+    </section>
+
+    <!-- ================= TELA HISTÓRICO DE JOGOS ================= -->
+    <section id="aba-historico" class="space-y-4 hidden">
+      <h3 class="font-bold text-gray-700 text-sm">Histórico de Partidas Anteriores</h3>
+      <div id="lista-historico-jogos" class="space-y-3"></div>
+    </section>
+
+    <!-- ================= TELA FINANCEIRO ================= -->
+    <section id="aba-financeiro" class="space-y-4 hidden">
+      <div class="bg-white p-3 rounded-xl border shadow-sm flex items-center justify-between">
+        <label class="text-xs font-bold text-gray-600">Consultar Mês:</label>
+        <input id="filtro-mes" type="month" onchange="carregarFinanceiro()" class="p-1.5 text-xs border rounded font-semibold text-gray-700">
+      </div>
+
+      <div id="card-saldo" class="p-4 rounded-xl border text-center bg-white shadow-sm space-y-2">
+        <h2 class="text-xs text-gray-500 uppercase font-semibold">Resumo Financeiro do Mês</h2>
+        <div class="grid grid-cols-2 gap-2 border-b pb-2 text-xs">
+          <div><span class="text-gray-500">Entradas:</span> <p id="total-entradas" class="font-bold text-green-600">R$ 0,00</p></div>
+          <div><span class="text-gray-500">Saídas:</span> <p id="total-saidas" class="font-bold text-red-600">R$ 0,00</p></div>
+        </div>
+        <div>
+          <span class="text-xs text-gray-400">Saldo Líquido</span>
+          <p id="valor-saldo" class="text-2xl font-extrabold">R$ 0,00</p>
+        </div>
+      </div>
+
+      <div class="bg-white p-4 rounded-xl shadow-sm border space-y-2">
+        <h3 class="font-bold text-gray-700 text-sm">Novo Lançamento</h3>
+        <input id="fin-desc" type="text" placeholder="Descrição (ex: Mensalidade, Aluguel Quadra)" class="w-full p-2 text-sm border rounded">
+        <div class="flex gap-2">
+          <input id="fin-valor" type="number" step="0.01" placeholder="Valor (R$)" class="w-1/2 p-2 text-sm border rounded">
+          <select id="fin-tipo" class="w-1/2 p-2 text-sm border rounded bg-white">
+            <option value="ENTRADA">Entrada (+)</option>
+            <option value="SAIDA">Saída (-)</option>
+          </select>
+        </div>
+        <div class="flex gap-2 items-center">
+          <label class="text-xs text-gray-500">Data:</label>
+          <input id="fin-data" type="date" class="flex-1 p-2 text-sm border rounded">
+        </div>
+        <button onclick="adicionarTransacao()" class="w-full bg-blue-600 text-white py-2 rounded font-bold text-sm">Lançar no Caixa</button>
+      </div>
+
+      <h3 class="font-bold text-gray-700 text-sm mt-4">Histórico de Movimentações</h3>
+      <div id="lista-transacoes" class="space-y-2"></div>
+    </section>
+
+  </main>
+
+  <script>
+    const SUPABASE_URL = "https://stidseuudenwdltjrggh.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN0aWRzZXV1ZGVud2RsdGpyZ2doIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2MTM2NDEsImV4cCI6MjEwMDE4OTY0MX0.aytikXt_g9eL1Gfrpg0EZQKjz5clR9z6JZCc5G-kwKk";
+
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    let isAdmin = false;
+    let senhaAdminAtual = "1234";
+    let dataHoraJogoObjeto = null;
+    let jogoEncerrado = false;
+    let listaJogadoresCache = [];
+    let jogoAtualConfig = null;
+    let meuEmailSalvo = localStorage.getItem('meu_email_atleta') || '';
+
+    // --- CONTROLE DE E-MAIL DO ATLETA LOCAL ---
+    function atualizarStatusEmail() {
+      const el = document.getElementById('meu-email-status');
+      if (meuEmailSalvo) {
+        el.innerText = meuEmailSalvo.split('@')[0];
+      } else {
+        el.innerText = "Meu E-mail";
+      }
+    }
+
+    function definirMeuEmail() {
+      const email = prompt("Digite seu e-mail cadastrado no time para identificar seu perfil neste celular:", meuEmailSalvo);
+      if (email !== null) {
+        meuEmailSalvo = email.trim().toLowerCase();
+        localStorage.setItem('meu_email_atleta', meuEmailSalvo);
+        atualizarStatusEmail();
+        carregarJogadores();
+      }
+    }
+
+    // --- CARREGAR CONFIGURAÇÕES ---
+    async function carregarConfiguracoes() {
+      atualizarStatusEmail();
+      const { data } = await db.from('config').select('*').eq('id', 1).single();
+      if (data) {
+        jogoAtualConfig = data;
+        senhaAdminAtual = data.senha_admin;
+        document.getElementById('input-data-jogo').value = data.data_jogo || '';
+        document.getElementById('input-hora-jogo').value = data.hora_jogo || '20:30';
+        
+        if (data.data_jogo && data.hora_jogo) {
+          const [ano, mes, dia] = data.data_jogo.split('-');
+          dataHoraJogoObjeto = new Date(`${data.data_jogo}T${data.hora_jogo}:00`);
+          document.getElementById('data-jogo-display').innerText = `${dia}/${mes}/${ano} às ${data.hora_jogo}h`;
+          
+          const agora = new Date();
+          jogoEncerrado = agora > dataHoraJogoObjeto;
+          document.getElementById('status-bloqueio').classList.toggle('hidden', !jogoEncerrado);
+        } else {
+          document.getElementById('data-jogo-display').innerText = "Nenhum jogo agendado";
+        }
+
+        if (data.time_a && data.time_a.length > 0) {
+          document.getElementById('box-times').classList.remove('hidden');
+          document.getElementById('lista-time-a').innerHTML = data.time_a.map(n => `<li>• ${n}</li>`).join('');
+          document.getElementById('lista-time-b').innerHTML = data.time_b.map(n => `<li>• ${n}</li>`).join('');
+        } else {
+          document.getElementById('box-times').classList.add('hidden');
+        }
+
+        if (data.gols_a !== null && data.gols_b !== null) {
+          document.getElementById('box-resultado').classList.remove('hidden');
+          document.getElementById('placar-a').innerText = data.gols_a;
+          document.getElementById('placar-b').innerText = data.gols_b;
+          document.getElementById('input-gols-a').value = data.gols_a;
+          document.getElementById('input-gols-b').value = data.gols_b;
+        } else {
+          document.getElementById('box-resultado').classList.add('hidden');
+        }
+      }
+      carregarJogadores();
+    }
+
+    // --- SALVAR NOVO JOGO ---
+    async function salvarDataJogoNovo() {
+      const novaData = document.getElementById('input-data-jogo').value;
+      const novaHora = document.getElementById('input-hora-jogo').value;
+
+      if (!novaData || !novaHora) return alert('Selecione a data e horário do novo jogo!');
+
+      if (!confirm("Confirmar o agendamento? O jogo atual será arquivado no Histórico e as presenças serão resetadas para o novo jogo.")) return;
+
+      if (jogoAtualConfig && jogoAtualConfig.data_jogo) {
+        const confirmadosCount = listaJogadoresCache.filter(j => j.confirmado).length;
+        await db.from('jogos').insert([{
+          data_jogo: jogoAtualConfig.data_jogo,
+          hora_jogo: jogoAtualConfig.hora_jogo,
+          time_a: jogoAtualConfig.time_a || [],
+          time_b: jogoAtualConfig.time_b || [],
+          gols_a: jogoAtualConfig.gols_a,
+          gols_b: jogoAtualConfig.gols_b,
+          total_confirmados: confirmadosCount
+        }]);
+      }
+
+      await db.from('config').update({ 
+        data_jogo: novaData, 
+        hora_jogo: novaHora,
+        time_a: [],
+        time_b: [],
+        gols_a: null,
+        gols_b: null
+      }).eq('id', 1);
+
+      await db.from('jogadores').update({ confirmado: false, time_manual: null }).neq('id', 0);
+
+      carregarConfiguracoes();
+      alert('Novo jogo agendado com sucesso!');
+    }
+
+    // --- CARREGAR HISTÓRICO DE JOGOS ---
+    async function carregarHistorico() {
+      const { data, error } = await db.from('jogos').select('*').order('id', { ascending: false });
+      if (error) return console.error(error);
+
+      const container = document.getElementById('lista-historico-jogos');
+      container.innerHTML = '';
+
+      if (data.length === 0) {
+        container.innerHTML = `<p class="text-xs text-gray-500 text-center py-4">Nenhum jogo encerrado arquivado ainda.</p>`;
+        return;
+      }
+
+      data.forEach(j => {
+        const [ano, mes, dia] = j.data_jogo.split('-');
+        const temPlacar = j.gols_a !== null && j.gols_b !== null;
+
+        container.innerHTML += `
+          <div class="bg-white p-4 rounded-xl border shadow-sm space-y-2">
+            <div class="flex justify-between items-center border-b pb-2">
+              <span class="font-bold text-sm text-gray-800">📅 ${dia}/${mes}/${ano} - ${j.hora_jogo}h</span>
+              <span class="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full font-semibold">${j.total_confirmados} Atletas</span>
+            </div>
+
+            ${temPlacar ? `
+              <div class="text-center font-black text-gray-800 my-1 text-sm">
+                Time A <span class="text-green-600 font-extrabold">${j.gols_a}</span> X <span class="text-blue-600 font-extrabold">${j.gols_b}</span> Time B
+              </div>
+            ` : '<p class="text-xs text-gray-400 italic text-center">Placar não cadastrado</p>'}
+
+            ${(j.time_a.length > 0 || j.time_b.length > 0) ? `
+              <div class="grid grid-cols-2 gap-2 pt-2 text-[11px] border-t">
+                <div>
+                  <p class="font-bold text-green-700">Time A:</p>
+                  <p class="text-gray-600">${j.time_a.join(', ') || 'Nenhum'}</p>
+                </div>
+                <div>
+                  <p class="font-bold text-blue-700">Time B:</p>
+                  <p class="text-gray-600">${j.time_b.join(', ') || 'Nenhum'}</p>
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      });
+    }
+
+    // --- LÓGICA DE JOGADORES (Com validação por e-mail) ---
+    async function carregarJogadores() {
+      const { data, error } = await db.from('jogadores').select('*');
+      if (error) return console.error(error);
+
+      listaJogadoresCache = data.sort((a, b) => {
+        if (a.confirmado === b.confirmado) {
+          return a.nome.localeCompare(b.nome);
+        }
+        return a.confirmado ? -1 : 1;
+      });
+
+      const lista = document.getElementById('lista-jogadores');
+      lista.innerHTML = '';
+      let confirmados = 0;
+
+      listaJogadoresCache.forEach(j => {
+        if (j.confirmado) confirmados++;
+
+        // Permissão: Admin tem acesso total, ou jogador cujo e-mail bate com o dispositivo
+        const ehSeuPerfil = meuEmailSalvo && j.email && (meuEmailSalvo === j.email.toLowerCase());
+        const podeAlterar = (isAdmin || ehSeuPerfil) && !jogoEncerrado;
+
+        lista.innerHTML += `
+          <div class="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border ${!j.confirmado ? 'opacity-70' : ''} ${ehSeuPerfil ? 'ring-2 ring-green-500' : ''}">
+            <div>
+              <p class="font-bold text-gray-800 text-sm">
+                ${j.nome} ${j.posicao === 'Goleiro' ? '🧤' : ''} 
+                ${ehSeuPerfil ? '<span class="text-[10px] bg-green-100 text-green-800 px-1.5 py-0.5 rounded font-normal">Você</span>' : ''}
+              </p>
+              <p class="text-xs text-gray-500">${j.posicao || 'Linha'} ${j.email ? `• ${j.email}` : ''}</p>
+            </div>
+            <div class="flex items-center gap-2">
+              ${isAdmin && j.confirmado ? `
+                <select onchange="definirTimeManual(${j.id}, this.value)" class="text-xs border rounded p-1 bg-yellow-50">
+                  <option value="" ${!j.time_manual ? 'selected' : ''}>S/ Time</option>
+                  <option value="Time A" ${j.time_manual === 'Time A' ? 'selected' : ''}>Time A</option>
+                  <option value="Time B" ${j.time_manual === 'Time B' ? 'selected' : ''}>Time B</option>
+                </select>
+              ` : ''}
+
+              <button 
+                ${!podeAlterar ? 'disabled' : ''} 
+                onclick="alternarPresenca(${j.id}, ${!j.confirmado}, '${j.email || ''}')" 
+                class="px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  j.confirmado ? 'bg-green-600 text-white shadow' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                } ${!podeAlterar ? 'opacity-50 cursor-not-allowed' : ''}">
+                ${j.confirmado ? 'Vou ✓' : 'Ausente ✗'}
+              </button>
+              ${isAdmin ? `<button onclick="deletarJogador(${j.id})" class="text-red-500 text-xs px-1">🗑️</button>` : ''}
+            </div>
+          </div>
+        `;
+      });
+      document.getElementById('total-confirmados').innerText = confirmados;
+    }
+
+    async function alternarPresenca(id, status, emailJogador) {
+      if (jogoEncerrado && !isAdmin) return alert('As confirmações foram encerradas!');
+      
+      const ehSeuPerfil = meuEmailSalvo && emailJogador && (meuEmailSalvo === emailJogador.toLowerCase());
+      if (!isAdmin && !ehSeuPerfil) {
+        return alert('Você só pode alterar a confirmação do seu próprio perfil! Clique em "👤 Meu E-mail" no topo para identificar seu dispositivo.');
+      }
+
+      await db.from('jogadores').update({ confirmado: status, time_manual: null }).eq('id', id);
+      carregarJogadores();
+    }
+
+    async function definirTimeManual(id, time) {
+      await db.from('jogadores').update({ time_manual: time || null }).eq('id', id);
+    }
+
+    async function salvarTimesManuais() {
+      const confirmados = listaJogadoresCache.filter(j => j.confirmado);
+      const timeA = confirmados.filter(j => j.time_manual === 'Time A').map(j => j.nome);
+      const timeB = confirmados.filter(j => j.time_manual === 'Time B').map(j => j.nome);
+
+      if (timeA.length === 0 && timeB.length === 0) {
+        return alert('Selecione os times nos menus ao lado do nome dos jogadores confirmados!');
+      }
+
+      await db.from('config').update({ time_a: timeA, time_b: timeB }).eq('id', 1);
+      carregarConfiguracoes();
+      alert('Seleção manual de times salva!');
+    }
+
+    async function dividirTimesAleatorio() {
+      const confirmados = listaJogadoresCache.filter(j => j.confirmado);
+      if (confirmados.length < 2) return alert('Pelo menos 2 jogadores confirmados são necessários!');
+
+      const goleiros = confirmados.filter(j => j.posicao === 'Goleiro').map(j => j.nome).sort(() => Math.random() - 0.5);
+      const linha = confirmados.filter(j => j.posicao !== 'Goleiro').map(j => j.nome).sort(() => Math.random() - 0.5);
+
+      const timeA = [];
+      const timeB = [];
+
+      if (goleiros.length > 0) timeA.push(goleiros[0] + " 🧤");
+      if (goleiros.length > 1) timeB.push(goleiros[1] + " 🧤");
+      for (let i = 2; i < goleiros.length; i++) {
+        (i % 2 === 0 ? timeA : timeB).push(goleiros[i] + " 🧤");
+      }
+
+      linha.forEach((nome, index) => {
+        (index % 2 === 0 ? timeA : timeB).push(nome);
+      });
+
+      await db.from('config').update({ time_a: timeA, time_b: timeB }).eq('id', 1);
+      carregarConfiguracoes();
+      alert('Times sorteados aleatoriamente!');
+    }
+
+    async function salvarResultado() {
+      const golsA = document.getElementById('input-gols-a').value;
+      const golsB = document.getElementById('input-gols-b').value;
+      if (golsA === "" || golsB === "") return alert('Digite os gols');
+
+      await db.from('config').update({ gols_a: parseInt(golsA), gols_b: parseInt(golsB) }).eq('id', 1);
+      carregarConfiguracoes();
+      alert('Resultado salvo!');
+    }
+
+    async function adicionarJogador() {
+      const nome = document.getElementById('novo-jogador-nome').value;
+      const email = document.getElementById('novo-jogador-email').value;
+      const posicao = document.getElementById('novo-jogador-pos').value;
+
+      if (!nome) return alert('Digite o nome do atleta');
+
+      await db.from('jogadores').insert([{ nome, email: email ? email.trim().toLowerCase() : null, posicao, confirmado: false }]);
+      document.getElementById('novo-jogador-nome').value = '';
+      document.getElementById('novo-jogador-email').value = '';
+      carregarJogadores();
+    }
+
+    async function deletarJogador(id) {
+      if (confirm("Remover atleta?")) {
+        await db.from('jogadores').delete().eq('id', id);
+        carregarJogadores();
+      }
+    }
+
+    async function alterarSenhaAdmin() {
+      const novaSenha = document.getElementById('input-nova-senha').value;
+      if (!novaSenha) return alert('Digite a nova senha');
+
+      await db.from('config').update({ senha_admin: novaSenha }).eq('id', 1);
+      senhaAdminAtual = novaSenha;
+      document.getElementById('input-nova-senha').value = '';
+      alert('Senha atualizada!');
+    }
+
+    // --- LÓGICA FINANCEIRA MENSAL ---
+    async function carregarFinanceiro() {
+      if (!isAdmin) return;
+
+      const filtroMes = document.getElementById('filtro-mes').value;
+      const { data, error } = await db.from('transacoes').select('*').order('data_lancamento', { ascending: false });
+      if (error) return console.error(error);
+
+      const lista = document.getElementById('lista-transacoes');
+      lista.innerHTML = '';
+      let entradas = 0;
+      let saidas = 0;
+
+      const filtrados = data.filter(t => t.data_lancamento.startsWith(filtroMes));
+
+      filtrados.forEach(t => {
+        const isEntrada = t.tipo === 'ENTRADA';
+        const valor = Number(t.valor);
+        if (isEntrada) entradas += valor; else saidas += valor;
+
+        const [ano, mes, dia] = t.data_lancamento.split('-');
+
+        lista.innerHTML += `
+          <div class="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border">
+            <div>
+              <p class="font-bold text-gray-800 text-sm">${t.descricao}</p>
+              <p class="text-xs text-gray-400">${dia}/${mes}/${ano} - ${t.tipo}</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <p class="font-bold text-sm ${isEntrada ? 'text-green-600' : 'text-red-600'}">
+                ${isEntrada ? '+' : '-'} R$ ${valor.toFixed(2)}
+              </p>
+              <button onclick="deletarTransacao(${t.id})" class="text-red-500 hover:text-red-700 text-xs px-1">🗑️</button>
+            </div>
+          </div>
+        `;
+      });
+
+      const saldo = entradas - saidas;
+      document.getElementById('total-entradas').innerText = `R$ ${entradas.toFixed(2)}`;
+      document.getElementById('total-saidas').innerText = `R$ ${saidas.toFixed(2)}`;
+      
+      const cardSaldo = document.getElementById('valor-saldo');
+      cardSaldo.innerText = `R$ ${saldo.toFixed(2)}`;
+      cardSaldo.className = `text-2xl font-extrabold ${saldo >= 0 ? 'text-green-600' : 'text-red-600'}`;
+    }
+
+    async function adicionarTransacao() {
+      if (!isAdmin) return;
+      const descricao = document.getElementById('fin-desc').value;
+      const valor = document.getElementById('fin-valor').value;
+      const tipo = document.getElementById('fin-tipo').value;
+      const dataLancamento = document.getElementById('fin-data').value;
+
+      if (!descricao || !valor || !dataLancamento) return alert('Preencha a descrição, valor e data');
+
+      await db.from('transacoes').insert([{ descricao, valor: parseFloat(valor), tipo, data_lancamento: dataLancamento }]);
+      document.getElementById('fin-desc').value = '';
+      document.getElementById('fin-valor').value = '';
+      carregarFinanceiro();
+    }
+
+    async function deletarTransacao(id) {
+      if (!isAdmin) return;
+      if (confirm("Deseja realmente remover este lançamento do caixa?")) {
+        await db.from('transacoes').delete().eq('id', id);
+        carregarFinanceiro();
+      }
+    }
+
+    // --- NAVEGAÇÃO DE ABAS E ADMIN ---
+    function toggleAdmin() {
+      if (isAdmin) {
+        isAdmin = false;
+        atualizarModoAdmin();
+      } else {
+        const senha = prompt("Digite a senha do Administrador:");
+        if (senha === senhaAdminAtual) {
+          isAdmin = true;
+          atualizarModoAdmin();
+        } else if (senha !== null) {
+          alert("Senha incorreta!");
+        }
+      }
+    }
+
+    function atualizarModoAdmin() {
+      document.getElementById('admin-status-text').innerText = isAdmin ? "Sair Admin" : "Admin";
+      document.getElementById('painel-admin-presenca').classList.toggle('hidden', !isAdmin);
+      
+      const btnFin = document.getElementById('btn-financeiro');
+      if (isAdmin) {
+        btnFin.style.display = 'block';
+      } else {
+        btnFin.style.display = 'none';
+        trocarAba('presenca');
+      }
+      carregarJogadores();
+    }
+
+    function trocarAba(aba) {
+      if (aba === 'financeiro' && !isAdmin) {
+        aba = 'presenca';
+      }
+
+      document.getElementById('aba-presenca').classList.toggle('hidden', aba !== 'presenca');
+      document.getElementById('aba-historico').classList.toggle('hidden', aba !== 'historico');
+      document.getElementById('aba-financeiro').classList.toggle('hidden', aba !== 'financeiro');
+      
+      const btnP = document.getElementById('btn-presenca');
+      const btnH = document.getElementById('btn-historico');
+      const btnF = document.getElementById('btn-financeiro');
+      
+      btnP.className = aba === 'presenca' ? "flex-1 py-3 font-bold border-b-4 border-green-600 text-green-700 text-xs" : "flex-1 py-3 font-bold border-b-4 border-transparent text-gray-500 text-xs";
+      btnH.className = aba === 'historico' ? "flex-1 py-3 font-bold border-b-4 border-green-600 text-green-700 text-xs" : "flex-1 py-3 font-bold border-b-4 border-transparent text-gray-500 text-xs";
+      btnF.className = aba === 'financeiro' ? "flex-1 py-3 font-bold border-b-4 border-blue-600 text-blue-700 text-xs" : "flex-1 py-3 font-bold border-b-4 border-transparent text-gray-500 text-xs";
+
+      if (aba === 'historico') carregarHistorico();
+      if (aba === 'financeiro' && isAdmin) carregarFinanceiro();
+    }
+
+    // Inicialização de datas
+    const hoje = new Date();
+    const anoAtual = hoje.getFullYear();
+    const mesAtual = String(hoje.getMonth() + 1).padStart(2, '0');
+    const diaAtual = String(hoje.getDate()).padStart(2, '0');
+    
+    document.getElementById('filtro-mes').value = `${anoAtual}-${mesAtual}`;
+    document.getElementById('fin-data').value = `${anoAtual}-${mesAtual}-${diaAtual}`;
+
+    carregarConfiguracoes();
+  </script>
+</body>
+</html>
