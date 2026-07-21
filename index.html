@@ -161,7 +161,7 @@
       <!-- Lista de Atletas Ordenada -->
       <div class="space-y-2">
         <h3 class="font-bold text-gray-700 text-sm">Lista de Atletas</h3>
-        <p class="text-[11px] text-gray-500">Selecione <b>Vou ✓</b> ou <b>Ausente ✗</b>. Clique em 🥩 para incluir sua presença no churrasco!</p>
+        <p class="text-[11px] text-gray-500">Selecione <b>Vou ✓</b> ou <b>Fora ✗</b>. Clique em 🥩 para incluir sua presença no churrasco!</p>
         <div id="lista-jogadores" class="space-y-2"></div>
       </div>
     </section>
@@ -307,8 +307,8 @@
       texto += `📍  Local: ${local}\n\n`;
 
       texto += `👕  GOLEIROS\n`;
-      texto += `1. ${goleiros[0] ? goleiros[0].nome + (goleiros[0].churrasco ? ' - 🥩' : '') : ''}\n`;
-      texto += `2. ${goleiros[1] ? goleiros[1].nome + (goleiros[1].churrasco ? ' - 🥩' : '') : ''}\n\n`;
+      texto += `1. ${goleiros[0] ? goleiros[0].nome + (goleiros[0].churrasco ? ' 🥩' : '') : ''}\n`;
+      texto += `2. ${goleiros[1] ? goleiros[1].nome + (goleiros[1].churrasco ? ' 🥩' : '') : ''}\n\n`;
 
       texto += `**Jogadores Confirmados\n`;
       const totalConfirmadosLinha = Math.max(14, linha.length);
@@ -316,7 +316,7 @@
         const num = i + 1;
         const j = linha[i];
         if (j) {
-          texto += `${num} - ${j.nome}${j.churrasco ? ' - 🥩' : ''}\n`;
+          texto += `${num} - ${j.nome}${j.churrasco ? ' 🥩' : ''}\n`;
         } else {
           texto += `${num} - \n`;
         }
@@ -372,7 +372,6 @@
         gols_b: null
       }).eq('id', 1);
 
-      // Reseta a presença de todos para NULL (Pendente/Dúvida)
       await db.from('jogadores').update({ confirmado: null, churrasco: false, time_manual: null }).neq('id', 0);
 
       carregarConfiguracoes();
@@ -436,12 +435,10 @@
       }
     }
 
-    // --- LÓGICA DE JOGADORES (3 ESTADOS: CONFIRMADO, AUSENTE, PENDENTE) ---
     async function carregarJogadores() {
       const { data, error } = await db.from('jogadores').select('*');
       if (error) return console.error(error);
 
-      // Ordenação: 1º Confirmados (true), 2º Pendentes (null), 3º Ausentes (false)
       listaJogadoresCache = data.sort((a, b) => {
         const peso = (val) => val === true ? 1 : (val === null ? 2 : 3);
         if (peso(a.confirmado) === peso(b.confirmado)) {
@@ -472,6 +469,7 @@
               </p>
               <p class="text-xs text-gray-500">
                 ${j.posicao || 'Linha'} 
+                ${j.email ? `• ${j.email}` : ''}
                 ${j.confirmado === null ? '<span class="text-yellow-600 font-semibold">• Pendente</span>' : ''}
               </p>
             </div>
@@ -512,13 +510,44 @@
                 Fora ✗
               </button>
 
-              ${isAdmin ? `<button onclick="deletarJogador(${j.id})" class="text-red-500 text-xs px-1">🗑️</button>` : ''}
+              ${isAdmin ? `
+                <button onclick="editarJogador(${j.id})" title="Editar Atleta" class="text-blue-600 hover:text-blue-800 text-xs px-1">✏️</button>
+                <button onclick="deletarJogador(${j.id})" title="Excluir Atleta" class="text-red-500 hover:text-red-700 text-xs px-1">🗑️</button>
+              ` : ''}
             </div>
           </div>
         `;
       });
       document.getElementById('total-confirmados').innerText = confirmados;
       document.getElementById('total-churrasco').innerText = totalChurras;
+    }
+
+    // --- FUNÇÃO PARA EDITAR CADASTRO DO ATLETA (ADMIN) ---
+    async function editarJogador(id) {
+      if (!isAdmin) return;
+
+      const jogador = listaJogadoresCache.find(j => j.id === id);
+      if (!jogador) return;
+
+      const novoNome = prompt("Nome do Atleta:", jogador.nome);
+      if (novoNome === null) return; // Cancelou
+
+      const novoEmail = prompt("E-mail do Atleta:", jogador.email || "");
+      if (novoEmail === null) return;
+
+      const novaPosicao = prompt("Posição (Digite 'Goleiro' ou 'Linha'):", jogador.posicao || "Linha");
+      if (novaPosicao === null) return;
+
+      const posFormatada = novaPosicao.trim().toLowerCase() === "goleiro" ? "Goleiro" : "Linha";
+
+      await db.from('jogadores').update({
+        nome: novoNome.trim(),
+        email: novoEmail.trim() ? novoEmail.trim().toLowerCase() : null,
+        posicao: posFormatada
+      }).eq('id', id);
+
+      alert("Cadastro do atleta atualizado com sucesso!");
+      carregarJogadores();
     }
 
     async function definirStatusPresenca(id, status, emailJogador) {
@@ -530,7 +559,7 @@
       }
 
       const updateData = { confirmado: status, time_manual: null };
-      if (status === false) updateData.churrasco = false; // Se marcar fora, tira do churrasco
+      if (status === false) updateData.churrasco = false;
 
       await db.from('jogadores').update(updateData).eq('id', id);
       carregarJogadores();
@@ -631,7 +660,6 @@
       alert('Senha atualizada!');
     }
 
-    // --- LÓGICA FINANCEIRA MENSAL ---
     async function carregarFinanceiro() {
       if (!isAdmin) return;
 
@@ -701,7 +729,6 @@
       }
     }
 
-    // --- NAVEGAÇÃO DE ABAS E ADMIN ---
     function toggleAdmin() {
       if (isAdmin) {
         isAdmin = false;
@@ -753,7 +780,6 @@
       if (aba === 'financeiro' && isAdmin) carregarFinanceiro();
     }
 
-    // Inicialização de datas
     const hoje = new Date();
     const anoAtual = hoje.getFullYear();
     const mesAtual = String(hoje.getMonth() + 1).padStart(2, '0');
