@@ -50,13 +50,18 @@
           🔒 Confirmações encerradas (Jogo iniciado/passado)
         </div>
 
-        <div class="grid grid-cols-2 gap-2">
-          <div class="bg-green-50 p-3 rounded-lg border border-green-200">
-            <span class="text-xs text-green-800 font-medium">Jogo</span>
+        <!-- Cards de Resumo (3 Colunas) -->
+        <div class="grid grid-cols-3 gap-1.5">
+          <div class="bg-green-50 p-2.5 rounded-lg border border-green-200">
+            <span class="text-[11px] text-green-800 font-semibold">Confirmados</span>
             <p id="total-confirmados" class="text-2xl font-black text-green-700">0</p>
           </div>
-          <div class="bg-red-50 p-3 rounded-lg border border-red-200">
-            <span class="text-xs text-red-800 font-medium">Churrasco 🥩</span>
+          <div class="bg-gray-50 p-2.5 rounded-lg border border-gray-200">
+            <span class="text-[11px] text-gray-600 font-semibold">Ausentes</span>
+            <p id="total-ausentes" class="text-2xl font-black text-gray-600">0</p>
+          </div>
+          <div class="bg-red-50 p-2.5 rounded-lg border border-red-200">
+            <span class="text-[11px] text-red-800 font-semibold">Churrasco 🥩</span>
             <p id="total-churrasco" class="text-2xl font-black text-red-700">0</p>
           </div>
         </div>
@@ -158,9 +163,16 @@
         </div>
       </div>
 
-      <!-- Lista de Atletas Ordenada -->
+      <!-- Lista de Atletas Ordenada com Total -->
       <div class="space-y-2">
-        <h3 class="font-bold text-gray-700 text-sm">Lista de Atletas</h3>
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold text-gray-700 text-sm flex items-center gap-1.5">
+            Lista de Atletas 
+            <span id="total-atletas-badge" class="bg-gray-200 text-gray-700 text-xs px-2 py-0.5 rounded-full font-semibold">
+              0 atletas
+            </span>
+          </h3>
+        </div>
         <p class="text-[11px] text-gray-500">Selecione <b>Vou ✓</b> ou <b>Fora ✗</b>. Clique em 🥩 para incluir sua presença no churrasco!</p>
         <div id="lista-jogadores" class="space-y-2"></div>
       </div>
@@ -435,7 +447,7 @@
       }
     }
 
-    // --- LÓGICA DE JOGADORES (E-mail visível apenas no Modo Admin) ---
+    // --- LÓGICA DE JOGADORES ---
     async function carregarJogadores() {
       const { data, error } = await db.from('jogadores').select('*');
       if (error) return console.error(error);
@@ -448,13 +460,18 @@
         return peso(a.confirmado) - peso(b.confirmado);
       });
 
+      // Atualiza o contador total de atletas cadastrados
+      document.getElementById('total-atletas-badge').innerText = `${data.length} atleta${data.length !== 1 ? 's' : ''}`;
+
       const lista = document.getElementById('lista-jogadores');
       lista.innerHTML = '';
       let confirmados = 0;
+      let ausentes = 0;
       let totalChurras = 0;
 
       listaJogadoresCache.forEach(j => {
         if (j.confirmado === true) confirmados++;
+        if (j.confirmado === false) ausentes++;
         if (j.churrasco) totalChurras++;
 
         const ehSeuPerfil = meuEmailSalvo && j.email && (meuEmailSalvo === j.email.toLowerCase());
@@ -520,6 +537,7 @@
         `;
       });
       document.getElementById('total-confirmados').innerText = confirmados;
+      document.getElementById('total-ausentes').innerText = ausentes;
       document.getElementById('total-churrasco').innerText = totalChurras;
     }
 
