@@ -315,7 +315,7 @@
       alert('Novo jogo agendado com sucesso!');
     }
 
-    // --- CARREGAR HISTÓRICO DE JOGOS ---
+    // --- CARREGAR E EXCLUIR HISTÓRICO DE JOGOS ---
     async function carregarHistorico() {
       const { data, error } = await db.from('jogos').select('*').order('id', { ascending: false });
       if (error) return console.error(error);
@@ -336,7 +336,10 @@
           <div class="bg-white p-4 rounded-xl border shadow-sm space-y-2">
             <div class="flex justify-between items-center border-b pb-2">
               <span class="font-bold text-sm text-gray-800">📅 ${dia}/${mes}/${ano} - ${j.hora_jogo}h</span>
-              <span class="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full font-semibold">${j.total_confirmados} Atletas</span>
+              <div class="flex items-center gap-2">
+                <span class="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full font-semibold">${j.total_confirmados} Atletas</span>
+                ${isAdmin ? `<button onclick="deletarJogoHistorico(${j.id})" class="text-red-500 hover:text-red-700 text-xs px-1">🗑️</button>` : ''}
+              </div>
             </div>
 
             ${temPlacar ? `
@@ -362,7 +365,15 @@
       });
     }
 
-    // --- LÓGICA DE JOGADORES (Com validação por e-mail) ---
+    async function deletarJogoHistorico(id) {
+      if (!isAdmin) return;
+      if (confirm("Deseja realmente excluir esta partida do histórico?")) {
+        await db.from('jogos').delete().eq('id', id);
+        carregarHistorico();
+      }
+    }
+
+    // --- LÓGICA DE JOGADORES ---
     async function carregarJogadores() {
       const { data, error } = await db.from('jogadores').select('*');
       if (error) return console.error(error);
@@ -381,7 +392,6 @@
       listaJogadoresCache.forEach(j => {
         if (j.confirmado) confirmados++;
 
-        // Permissão: Admin tem acesso total, ou jogador cujo e-mail bate com o dispositivo
         const ehSeuPerfil = meuEmailSalvo && j.email && (meuEmailSalvo === j.email.toLowerCase());
         const podeAlterar = (isAdmin || ehSeuPerfil) && !jogoEncerrado;
 
@@ -612,6 +622,7 @@
         trocarAba('presenca');
       }
       carregarJogadores();
+      carregarHistorico();
     }
 
     function trocarAba(aba) {
