@@ -302,6 +302,7 @@
       carregarJogadores();
     }
 
+    // --- MENSAGEM WHATSAPP (EXIBE 🥩 EM CONFIRMADOS E EM DESFALQUES) ---
     function compartilharWhatsApp() {
       if (!jogoAtualConfig || !jogoAtualConfig.data_jogo) return alert("Nenhum jogo agendado para compartilhar.");
 
@@ -340,7 +341,7 @@
         const num = i + 1;
         const j = desfalques[i];
         if (j) {
-          texto += `${num} - ${j.nome}\n`;
+          texto += `${num} - ${j.nome}${j.churrasco ? ' 🥩' : ''}\n`;
         } else {
           texto += `${num} - \n`;
         }
@@ -447,7 +448,6 @@
       }
     }
 
-    // --- LÓGICA DE JOGADORES ---
     async function carregarJogadores() {
       const { data, error } = await db.from('jogadores').select('*');
       if (error) return console.error(error);
@@ -460,7 +460,6 @@
         return peso(a.confirmado) - peso(b.confirmado);
       });
 
-      // Atualiza o contador total de atletas cadastrados
       document.getElementById('total-atletas-badge').innerText = `${data.length} atleta${data.length !== 1 ? 's' : ''}`;
 
       const lista = document.getElementById('lista-jogadores');
@@ -478,7 +477,7 @@
         const podeAlterar = (isAdmin || ehSeuPerfil) && !jogoEncerrado;
 
         lista.innerHTML += `
-          <div class="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border ${j.confirmado === false ? 'opacity-50' : ''} ${ehSeuPerfil ? 'ring-2 ring-green-500' : ''}">
+          <div class="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border ${j.confirmado === false ? 'opacity-60' : ''} ${ehSeuPerfil ? 'ring-2 ring-green-500' : ''}">
             <div>
               <p class="font-bold text-gray-800 text-sm">
                 ${j.nome} ${j.posicao === 'Goleiro' ? '🧤' : ''} 
@@ -576,10 +575,8 @@
         return alert('Você só pode alterar o seu próprio perfil!');
       }
 
-      const updateData = { confirmado: status, time_manual: null };
-      if (status === false) updateData.churrasco = false;
-
-      await db.from('jogadores').update(updateData).eq('id', id);
+      // Atualiza o status do jogo sem alterar o churrasco
+      await db.from('jogadores').update({ confirmado: status, time_manual: null }).eq('id', id);
       carregarJogadores();
     }
 
