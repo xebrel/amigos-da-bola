@@ -191,14 +191,21 @@
         <input id="filtro-mes" type="month" onchange="carregarFinanceiro()" class="p-1.5 text-xs border rounded font-semibold text-gray-700">
       </div>
 
+      <!-- CARD DE SALDO COM SALDO ANTERIOR ACUMULADO -->
       <div id="card-saldo" class="p-4 rounded-xl border text-center bg-white shadow-sm space-y-2">
         <h2 class="text-xs text-gray-500 uppercase font-semibold">Resumo Financeiro do Mês</h2>
+        
+        <div class="bg-gray-50 p-2 rounded-lg border text-xs flex justify-between items-center mb-1">
+          <span class="text-gray-600 font-semibold">Saldo Mês Anterior:</span>
+          <span id="total-saldo-anterior" class="font-bold text-gray-800">R$ 0,00</span>
+        </div>
+
         <div class="grid grid-cols-2 gap-2 border-b pb-2 text-xs">
-          <div><span class="text-gray-500">Entradas:</span> <p id="total-entradas" class="font-bold text-green-600">R$ 0,00</p></div>
-          <div><span class="text-gray-500">Saídas:</span> <p id="total-saidas" class="font-bold text-red-600">R$ 0,00</p></div>
+          <div><span class="text-gray-500">Entradas (Mês):</span> <p id="total-entradas" class="font-bold text-green-600">R$ 0,00</p></div>
+          <div><span class="text-gray-500">Saídas (Mês):</span> <p id="total-saidas" class="font-bold text-red-600">R$ 0,00</p></div>
         </div>
         <div>
-          <span class="text-xs text-gray-400">Saldo Líquido</span>
+          <span class="text-xs text-gray-400">Saldo Líquido Acumulado</span>
           <p id="valor-saldo" class="text-2xl font-extrabold">R$ 0,00</p>
         </div>
       </div>
@@ -719,7 +726,7 @@
       alert('Senha atualizada!');
     }
 
-    // --- LÓGICA MENSALIDADES + FINANCEIRO DO MÊS ---
+    // --- LÓGICA FINANCEIRA MENSAL COM ACÚMULO DE SALDO ANTERIOR ---
     async function carregarFinanceiro() {
       if (!isAdmin) return;
 
@@ -730,24 +737,33 @@
 
       await sincronizarMensalidadesMes(filtroMes);
 
-      const { data: mensalidades } = await db.from('mensalidades')
-        .select('*, jogadores(nome)')
-        .eq('mes_ano', filtroMes);
+      // 1. Carregar TODAS as Mensalidades para calcular o saldo acumulado total
+      const { data: todasMensalidades } = await db.from('mensalidades')
+        .select('*, jogadores(nome)');
 
-      const listaMensalidadesEl = document.getElementById('lista-mensalidades-jogadores');
-      listaMensalidadesEl.innerHTML = '';
-      let totalRecebidoMensalidades = 0;
+      // 2. Carregar TODAS as Transações Avulsas
+      const { data: todasTransacoes } = await db.from('transacoes')
+        .select('*')
+        .order('data_lancamento', { ascending: false });
+
+      let saldoAnterior = 0;
+      let totalRecebidoMensalidadesMes = 0;
       let countPagos = 0;
       let countPendentes = 0;
 
-      if (mensalidades) {
-        mensalidades.sort((a, b) => (a.jogadores?.nome || '').localeCompare(b.jogadores?.nome || ''));
+      const listaMensalidadesEl = document.getElementById('lista-mensalidades-jogadores');
+      listaMensalidadesEl.innerHTML = '';
 
-        mensalidades.forEach(m => {
+      if (todasMensalidades) {
+        // Filtra e exibe somente as mensalidades do mês selecionado
+        const mensalidadesDoMes = todasMensalidades.filter(m => m.mes_ano === filtroMes);
+        mensalidadesDoMes.sort((a, b) => (a.jogadores?.nome || '').localeCompare(b.jogadores?.nome || ''));
+
+        mensalidadesDoMes.forEach(m => {
           const nome = m.jogadores?.nome || 'Atleta';
           const isPago = m.pago;
           if (isPago) {
-            totalRecebidoMensalidades += Number(m.valor_pago || 0);
+            totalRecebidoMensalidadesMes += Number(m.valor_pago || 0);
             countPagos++;
           } else {
             countPendentes++;
@@ -762,7 +778,6 @@
             dataPagamentoFormatada = `${diaP}/${mesP}/${anoP}`;
           }
 
-          // Se estiver Pago, mostra o valor pago real; se estiver Pendente, exibe 0,00
           const valorExibicao = isPago ? formatarNumeroBR(m.valor_pago) : formatarNumeroBR(0);
 
           listaMensalidadesEl.innerHTML += `
@@ -790,53 +805,70 @@
           `;
         });
 
-        document.getElementById('mensalidades-total').innerText = mensalidades.length;
+        document.getElementById('mensalidades-total').innerText = mensalidadesDoMes.length;
         document.getElementById('mensalidades-pagos').innerText = countPagos;
         document.getElementById('mensalidades-pendentes').innerText = countPendentes;
+
+        // Soma as mensalidades pagas em MESES ANTERIORES ao selecionado
+        todasMensalidades.forEach(m => {
+          if (m.mes_ano < filtroMes && m.pago) {
+            saldoAnterior += Number(m.valor_pago || 0);
+          }
+        });
       }
 
-      const { data: transacoes } = await db.from('transacoes').select('*').order('data_lancamento', { ascending: false });
+      // 3. Processar Transações Avulsas (Meses Anteriores vs Mês Atual)
       const listaTransacoesEl = document.getElementById('lista-transacoes');
       listaTransacoesEl.innerHTML = '';
       
-      let entradasAvulsas = 0;
-      let saidasAvulsas = 0;
+      let entradasAvulsasMes = 0;
+      let saidasAvulsasMes = 0;
 
-      const filtrados = (transacoes || []).filter(t => t.data_lancamento.startsWith(filtroMes));
+      (todasTransacoes || []).forEach(t => {
+        const valor = Number(t.valor || 0);
+        const mesTransacao = t.data_lancamento.substring(0, 7);
 
-      filtrados.forEach(t => {
-        const isEntrada = t.tipo === 'ENTRADA';
-        const valor = Number(t.valor);
-        if (isEntrada) entradasAvulsas += valor; else saidasAvulsas += valor;
+        if (mesTransacao < filtroMes) {
+          // Transações de Meses Anteriores entram no Saldo Anterior
+          if (t.tipo === 'ENTRADA') saldoAnterior += valor;
+          else if (t.tipo === 'SAIDA') saldoAnterior -= valor;
+        } else if (mesTransacao === filtroMes) {
+          // Transações do Mês Selecionado
+          if (t.tipo === 'ENTRADA') entradasAvulsasMes += valor;
+          else if (t.tipo === 'SAIDA') saidasAvulsasMes += valor;
 
-        const [ano, mes, dia] = t.data_lancamento.split('-');
+          const [ano, mes, dia] = t.data_lancamento.split('-');
+          const isEntrada = t.tipo === 'ENTRADA';
 
-        listaTransacoesEl.innerHTML += `
-          <div class="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border">
-            <div>
-              <p class="font-bold text-gray-800 text-sm">${t.descricao}</p>
-              <p class="text-xs text-gray-400">${dia}/${mes}/${ano} - ${t.tipo}</p>
+          listaTransacoesEl.innerHTML += `
+            <div class="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border">
+              <div>
+                <p class="font-bold text-gray-800 text-sm">${t.descricao}</p>
+                <p class="text-xs text-gray-400">${dia}/${mes}/${ano} - ${t.tipo}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <p class="font-bold text-sm ${isEntrada ? 'text-green-600' : 'text-red-600'}">
+                  ${isEntrada ? '+' : '-'} ${formatarMoedaBR(valor)}
+                </p>
+                <button onclick="deletarTransacao(${t.id})" class="text-red-500 hover:text-red-700 text-xs px-1">🗑️</button>
+              </div>
             </div>
-            <div class="flex items-center gap-2">
-              <p class="font-bold text-sm ${isEntrada ? 'text-green-600' : 'text-red-600'}">
-                ${isEntrada ? '+' : '-'} ${formatarMoedaBR(valor)}
-              </p>
-              <button onclick="deletarTransacao(${t.id})" class="text-red-500 hover:text-red-700 text-xs px-1">🗑️</button>
-            </div>
-          </div>
-        `;
+          `;
+        }
       });
 
-      const totalEntradas = totalRecebidoMensalidades + entradasAvulsas;
-      const totalSaidas = saidasAvulsas;
-      const saldoLiquido = totalEntradas - totalSaidas;
+      // Consolidação Geral do Caixa
+      const totalEntradasMes = totalRecebidoMensalidadesMes + entradasAvulsasMes;
+      const totalSaidasMes = saidasAvulsasMes;
+      const saldoLiquidoAcumulado = saldoAnterior + totalEntradasMes - totalSaidasMes;
 
-      document.getElementById('total-entradas').innerText = formatarMoedaBR(totalEntradas);
-      document.getElementById('total-saidas').innerText = formatarMoedaBR(totalSaidas);
+      document.getElementById('total-saldo-anterior').innerText = formatarMoedaBR(saldoAnterior);
+      document.getElementById('total-entradas').innerText = formatarMoedaBR(totalEntradasMes);
+      document.getElementById('total-saidas').innerText = formatarMoedaBR(totalSaidasMes);
       
       const cardSaldo = document.getElementById('valor-saldo');
-      cardSaldo.innerText = formatarMoedaBR(saldoLiquido);
-      cardSaldo.className = `text-2xl font-extrabold ${saldoLiquido >= 0 ? 'text-green-600' : 'text-red-600'}`;
+      cardSaldo.innerText = formatarMoedaBR(saldoLiquidoAcumulado);
+      cardSaldo.className = `text-2xl font-extrabold ${saldoLiquidoAcumulado >= 0 ? 'text-green-600' : 'text-red-600'}`;
     }
 
     async function sincronizarMensalidadesMes(mesAno) {
