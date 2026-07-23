@@ -203,14 +203,44 @@
         </div>
       </div>
 
-      <div class="bg-white p-4 rounded-xl shadow-sm border space-y-2">
-        <h3 class="font-bold text-gray-700 text-sm">Novo Lançamento</h3>
-        <input id="fin-desc" type="text" placeholder="Descrição (ex: Mensalidade, Aluguel Quadra)" class="w-full p-2 text-sm border rounded">
+      <!-- Configurar Vencimento Padrão -->
+      <div class="bg-yellow-50 p-3 rounded-xl border border-yellow-200 flex items-center justify-between gap-2">
+        <label class="text-xs font-bold text-yellow-900">Dia de Vencimento Padrão do Mês:</label>
+        <input id="dia-vencimento-mes" type="number" min="1" max="31" value="03" onchange="gerarMensalidadesMes()" class="w-16 p-1 text-xs border rounded text-center font-bold">
+      </div>
+
+      <!-- MENSALIDADES DOS JOGADORES + RESUMO DE STATUS -->
+      <div class="space-y-2">
+        <h3 id="titulo-mensalidades-mes" class="font-bold text-gray-700 text-sm">Controle de Mensalidades do Mês</h3>
+
+        <!-- Cards de Resumo Mensalidades -->
+        <div class="grid grid-cols-3 gap-1.5 my-2">
+          <div class="bg-blue-50 p-2 rounded-lg border border-blue-200 text-center">
+            <span class="text-[10px] text-blue-800 font-semibold uppercase">Atletas</span>
+            <p id="mensalidades-total" class="text-xl font-black text-blue-700">0</p>
+          </div>
+          <div class="bg-green-50 p-2 rounded-lg border border-green-200 text-center">
+            <span class="text-[10px] text-green-800 font-semibold uppercase">Pagos</span>
+            <p id="mensalidades-pagos" class="text-xl font-black text-green-700">0</p>
+          </div>
+          <div class="bg-red-50 p-2 rounded-lg border border-red-200 text-center">
+            <span class="text-[10px] text-red-800 font-semibold uppercase">Pendentes</span>
+            <p id="mensalidades-pendentes" class="text-xl font-black text-red-700">0</p>
+          </div>
+        </div>
+
+        <div id="lista-mensalidades-jogadores" class="space-y-2"></div>
+      </div>
+
+      <!-- LANÇAMENTOS DIVERSOS (DESPESAS / DEMAIS RECEITAS) -->
+      <div class="bg-white p-4 rounded-xl shadow-sm border space-y-2 mt-6">
+        <h3 class="font-bold text-gray-700 text-sm">Outros Lançamentos (Quadra, Equipamentos, etc)</h3>
+        <input id="fin-desc" type="text" placeholder="Descrição (ex: Aluguel Quadra, Bola Nova)" class="w-full p-2 text-sm border rounded">
         <div class="flex gap-2">
           <input id="fin-valor" type="number" step="0.01" placeholder="Valor (R$)" class="w-1/2 p-2 text-sm border rounded">
           <select id="fin-tipo" class="w-1/2 p-2 text-sm border rounded bg-white">
-            <option value="ENTRADA">Entrada (+)</option>
             <option value="SAIDA">Saída (-)</option>
+            <option value="ENTRADA">Entrada (+)</option>
           </select>
         </div>
         <div class="flex gap-2 items-center">
@@ -220,7 +250,7 @@
         <button onclick="adicionarTransacao()" class="w-full bg-blue-600 text-white py-2 rounded font-bold text-sm">Lançar no Caixa</button>
       </div>
 
-      <h3 class="font-bold text-gray-700 text-sm mt-4">Histórico de Movimentações</h3>
+      <h3 class="font-bold text-gray-700 text-sm mt-4">Histórico de Movimentações Avulsas</h3>
       <div id="lista-transacoes" class="space-y-2"></div>
     </section>
 
@@ -238,6 +268,22 @@
     let listaJogadoresCache = [];
     let jogoAtualConfig = null;
     let meuEmailSalvo = localStorage.getItem('meu_email_atleta') || '';
+
+    function formatarMoedaBR(valor) {
+      return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
+    }
+
+    function formatarNumeroBR(valor) {
+      return new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(valor || 0);
+    }
+
+    function obterNomeMesAno(mesAnoStr) {
+      if (!mesAnoStr) return '';
+      const [ano, mes] = mesAnoStr.split('-');
+      const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+      const nomeMes = meses[parseInt(mes, 10) - 1];
+      return `${nomeMes}/${ano}`;
+    }
 
     function atualizarStatusEmail() {
       const el = document.getElementById('meu-email-status');
@@ -302,7 +348,6 @@
       carregarJogadores();
     }
 
-    // --- MENSAGEM WHATSAPP (EXIBE 🥩 EM CONFIRMADOS E EM DESFALQUES) ---
     function compartilharWhatsApp() {
       if (!jogoAtualConfig || !jogoAtualConfig.data_jogo) return alert("Nenhum jogo agendado para compartilhar.");
 
@@ -575,7 +620,6 @@
         return alert('Você só pode alterar o seu próprio perfil!');
       }
 
-      // Atualiza o status do jogo sem alterar o churrasco
       await db.from('jogadores').update({ confirmado: status, time_manual: null }).eq('id', id);
       carregarJogadores();
     }
@@ -675,28 +719,99 @@
       alert('Senha atualizada!');
     }
 
+    // --- LÓGICA MENSALIDADES + FINANCEIRO DO MÊS ---
     async function carregarFinanceiro() {
       if (!isAdmin) return;
 
-      const filtroMes = document.getElementById('filtro-mes').value;
-      const { data, error } = await db.from('transacoes').select('*').order('data_lancamento', { ascending: false });
-      if (error) return console.error(error);
+      const filtroMes = document.getElementById('filtro-mes').value; // Formato YYYY-MM
+      
+      const nomeMesAno = obterNomeMesAno(filtroMes);
+      document.getElementById('titulo-mensalidades-mes').innerText = `Controle de Mensalidades - ${nomeMesAno}`;
 
-      const lista = document.getElementById('lista-transacoes');
-      lista.innerHTML = '';
-      let entradas = 0;
-      let saidas = 0;
+      await sincronizarMensalidadesMes(filtroMes);
 
-      const filtrados = data.filter(t => t.data_lancamento.startsWith(filtroMes));
+      const { data: mensalidades } = await db.from('mensalidades')
+        .select('*, jogadores(nome)')
+        .eq('mes_ano', filtroMes);
+
+      const listaMensalidadesEl = document.getElementById('lista-mensalidades-jogadores');
+      listaMensalidadesEl.innerHTML = '';
+      let totalRecebidoMensalidades = 0;
+      let countPagos = 0;
+      let countPendentes = 0;
+
+      if (mensalidades) {
+        mensalidades.sort((a, b) => (a.jogadores?.nome || '').localeCompare(b.jogadores?.nome || ''));
+
+        mensalidades.forEach(m => {
+          const nome = m.jogadores?.nome || 'Atleta';
+          const isPago = m.pago;
+          if (isPago) {
+            totalRecebidoMensalidades += Number(m.valor_pago || 0);
+            countPagos++;
+          } else {
+            countPendentes++;
+          }
+
+          const [anoV, mesV, diaV] = m.vencimento.split('-');
+          const vencFormatado = `${diaV}/${mesV}/${anoV}`;
+
+          let dataPagamentoFormatada = '';
+          if (m.data_pagamento) {
+            const [anoP, mesP, diaP] = m.data_pagamento.split('-');
+            dataPagamentoFormatada = `${diaP}/${mesP}/${anoP}`;
+          }
+
+          // Se estiver Pago, mostra o valor pago real; se estiver Pendente, exibe 0,00
+          const valorExibicao = isPago ? formatarNumeroBR(m.valor_pago) : formatarNumeroBR(0);
+
+          listaMensalidadesEl.innerHTML += `
+            <div class="p-3.5 bg-white rounded-xl border shadow-sm flex items-center justify-between">
+              <div class="space-y-0.5">
+                <p class="font-bold text-gray-800 text-sm">Mensalidade</p>
+                <p class="text-xs font-semibold text-gray-700">${nome}</p>
+                <p class="text-[11px] text-gray-400">Venc. ${vencFormatado}</p>
+                <p class="text-xs font-bold text-blue-900">${valorExibicao}</p>
+                ${isPago ? `<p class="text-[11px] text-gray-500 font-medium">Líquido: ${formatarNumeroBR(m.valor_pago)} • Pago em ${dataPagamentoFormatada}</p>` : ''}
+              </div>
+
+              <div>
+                ${isPago ? `
+                  <button onclick="estornarMensalidade(${m.id})" class="bg-blue-500 text-white font-bold text-xs px-4 py-1.5 rounded-full shadow hover:bg-blue-600 transition-all">
+                    Pago
+                  </button>
+                ` : `
+                  <button onclick="darBaixaMensalidade(${m.id})" class="bg-red-500 text-white font-bold text-xs px-3 py-1.5 rounded-full shadow hover:bg-red-600 transition-all">
+                    Pendente
+                  </button>
+                `}
+              </div>
+            </div>
+          `;
+        });
+
+        document.getElementById('mensalidades-total').innerText = mensalidades.length;
+        document.getElementById('mensalidades-pagos').innerText = countPagos;
+        document.getElementById('mensalidades-pendentes').innerText = countPendentes;
+      }
+
+      const { data: transacoes } = await db.from('transacoes').select('*').order('data_lancamento', { ascending: false });
+      const listaTransacoesEl = document.getElementById('lista-transacoes');
+      listaTransacoesEl.innerHTML = '';
+      
+      let entradasAvulsas = 0;
+      let saidasAvulsas = 0;
+
+      const filtrados = (transacoes || []).filter(t => t.data_lancamento.startsWith(filtroMes));
 
       filtrados.forEach(t => {
         const isEntrada = t.tipo === 'ENTRADA';
         const valor = Number(t.valor);
-        if (isEntrada) entradas += valor; else saidas += valor;
+        if (isEntrada) entradasAvulsas += valor; else saidasAvulsas += valor;
 
         const [ano, mes, dia] = t.data_lancamento.split('-');
 
-        lista.innerHTML += `
+        listaTransacoesEl.innerHTML += `
           <div class="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border">
             <div>
               <p class="font-bold text-gray-800 text-sm">${t.descricao}</p>
@@ -704,7 +819,7 @@
             </div>
             <div class="flex items-center gap-2">
               <p class="font-bold text-sm ${isEntrada ? 'text-green-600' : 'text-red-600'}">
-                ${isEntrada ? '+' : '-'} R$ ${valor.toFixed(2)}
+                ${isEntrada ? '+' : '-'} ${formatarMoedaBR(valor)}
               </p>
               <button onclick="deletarTransacao(${t.id})" class="text-red-500 hover:text-red-700 text-xs px-1">🗑️</button>
             </div>
@@ -712,25 +827,122 @@
         `;
       });
 
-      const saldo = entradas - saidas;
-      document.getElementById('total-entradas').innerText = `R$ ${entradas.toFixed(2)}`;
-      document.getElementById('total-saidas').innerText = `R$ ${saidas.toFixed(2)}`;
+      const totalEntradas = totalRecebidoMensalidades + entradasAvulsas;
+      const totalSaidas = saidasAvulsas;
+      const saldoLiquido = totalEntradas - totalSaidas;
+
+      document.getElementById('total-entradas').innerText = formatarMoedaBR(totalEntradas);
+      document.getElementById('total-saidas').innerText = formatarMoedaBR(totalSaidas);
       
       const cardSaldo = document.getElementById('valor-saldo');
-      cardSaldo.innerText = `R$ ${saldo.toFixed(2)}`;
-      cardSaldo.className = `text-2xl font-extrabold ${saldo >= 0 ? 'text-green-600' : 'text-red-600'}`;
+      cardSaldo.innerText = formatarMoedaBR(saldoLiquido);
+      cardSaldo.className = `text-2xl font-extrabold ${saldoLiquido >= 0 ? 'text-green-600' : 'text-red-600'}`;
+    }
+
+    async function sincronizarMensalidadesMes(mesAno) {
+      const { data: atletas } = await db.from('jogadores').select('id');
+      if (!atletas) return;
+
+      const diaVenc = String(document.getElementById('dia-vencimento-mes').value).padStart(2, '0');
+      const dataVencimento = `${mesAno}-${diaVenc}`;
+
+      const { data: existentes } = await db.from('mensalidades').select('jogador_id').eq('mes_ano', mesAno);
+      const idsExistentes = (existentes || []).map(e => e.jogador_id);
+
+      const novosParaInserir = atletas
+        .filter(a => !idsExistentes.includes(a.id))
+        .map(a => ({
+          jogador_id: a.id,
+          mes_ano: mesAno,
+          vencimento: dataVencimento,
+          pago: false,
+          valor_pago: 0
+        }));
+
+      if (novosParaInserir.length > 0) {
+        await db.from('mensalidades').insert(novosParaInserir);
+      }
+    }
+
+    async function gerarMensalidadesMes() {
+      const filtroMes = document.getElementById('filtro-mes').value;
+      const diaVenc = String(document.getElementById('dia-vencimento-mes').value).padStart(2, '0');
+      const dataVencimento = `${filtroMes}-${diaVenc}`;
+
+      await db.from('mensalidades')
+        .update({ vencimento: dataVencimento })
+        .eq('mes_ano', filtroMes)
+        .eq('pago', false);
+
+      carregarFinanceiro();
+    }
+
+    async function darBaixaMensalidade(id) {
+      if (!isAdmin) return;
+
+      const valorStr = prompt("Informe o valor pago pelo atleta (R$):", "50,00");
+      if (valorStr === null) return;
+      
+      const valor = parseFloat(valorStr.replace('.', '').replace(',', '.'));
+      if (isNaN(valor)) return alert("Valor inválido!");
+
+      const hojeObj = new Date();
+      const dia = String(hojeObj.getDate()).padStart(2, '0');
+      const mes = String(hojeObj.getMonth() + 1).padStart(2, '0');
+      const ano = hojeObj.getFullYear();
+      const hojeBR = `${dia}/${mes}/${ano}`;
+
+      const dataPagamentoBR = prompt("Data em que o pagamento foi realizado (DD/MM/AAAA):", hojeBR);
+      if (!dataPagamentoBR) return;
+
+      const partes = dataPagamentoBR.trim().replace(/\//g, '-').split('-');
+      let dataBanco = '';
+
+      if (partes.length === 3) {
+        if (partes[0].length === 4) {
+          dataBanco = `${partes[0]}-${partes[1].padStart(2, '0')}-${partes[2].padStart(2, '0')}`;
+        } else {
+          dataBanco = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
+        }
+      } else {
+        return alert("Formato de data inválido! Use DD/MM/AAAA.");
+      }
+
+      await db.from('mensalidades').update({
+        pago: true,
+        valor_pago: valor,
+        data_pagamento: dataBanco
+      }).eq('id', id);
+
+      carregarFinanceiro();
+    }
+
+    async function estornarMensalidade(id) {
+      if (!isAdmin) return;
+
+      if (confirm("Deseja voltar o status desta mensalidade para Pendente?")) {
+        await db.from('mensalidades').update({
+          pago: false,
+          valor_pago: 0,
+          data_pagamento: null
+        }).eq('id', id);
+
+        carregarFinanceiro();
+      }
     }
 
     async function adicionarTransacao() {
       if (!isAdmin) return;
       const descricao = document.getElementById('fin-desc').value;
-      const valor = document.getElementById('fin-valor').value;
+      const valorStr = document.getElementById('fin-valor').value;
       const tipo = document.getElementById('fin-tipo').value;
       const dataLancamento = document.getElementById('fin-data').value;
 
-      if (!descricao || !valor || !dataLancamento) return alert('Preencha a descrição, valor e data');
+      if (!descricao || !valorStr || !dataLancamento) return alert('Preencha a descrição, valor e data');
 
-      await db.from('transacoes').insert([{ descricao, valor: parseFloat(valor), tipo, data_lancamento: dataLancamento }]);
+      const valor = parseFloat(valorStr.replace('.', '').replace(',', '.'));
+
+      await db.from('transacoes').insert([{ descricao, valor: valor, tipo, data_lancamento: dataLancamento }]);
       document.getElementById('fin-desc').value = '';
       document.getElementById('fin-valor').value = '';
       carregarFinanceiro();
