@@ -1,0 +1,17 @@
+name: Manter Supabase Ativo
+
+on:
+  schedule:
+    # Executa a cada 3 dias às 06:00 UTC (03:00 da manhã no Brasil)
+    - cron: '0 6 */3 * *'
+  workflow_dispatch: # Permite testar e disparar manualmente quando quiser
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consulta leitura leve no banco Supabase
+        run: |
+          curl -s -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/config?select=id" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
