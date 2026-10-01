@@ -2,16 +2,31 @@ name: Manter Supabase Ativo
 
 on:
   schedule:
-    # Executa a cada 3 dias às 06:00 UTC (03:00 da manhã no Brasil)
+    # Executa a cada 3 dias às 06:00 UTC (03:00 no Brasil)
     - cron: '0 6 */3 * *'
-  workflow_dispatch: # Permite testar e disparar manualmente quando quiser
+  workflow_dispatch: # Permite disparar manualmente para testar
 
 jobs:
   ping-supabase:
     runs-on: ubuntu-latest
     steps:
-      - name: Consulta leitura leve no banco Supabase
+      - name: Ping na API do Supabase
         run: |
-          curl -s -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/config?select=id" \
+          URL="${{ secrets.SUPABASE_URL }}"
+          # Remove barras duplicadas no final caso existam
+          URL="${URL%/}"
+          
+          # Faz a consulta simples na tabela config
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${URL}/rest/v1/config?select=id" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
+          
+          echo "Resposta HTTP do Supabase: $HTTP_STATUS"
+          
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
+            echo "Sucesso: Supabase consultado e ativo!"
+            exit 0
+          else
+            echo "Erro: Resposta inesperada ($HTTP_STATUS)"
+            exit 1
+          fi
