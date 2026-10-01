@@ -2,31 +2,48 @@ name: Manter Supabase Ativo
 
 on:
   schedule:
-    # Executa todos os dias às 06:00 UTC (03:00 da manhã no Brasil)
+    # Executa todos os dias às 06:00 UTC (03:00 no Brasil)
     - cron: '0 6 * * *'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   ping-supabase:
     runs-on: ubuntu-latest
     steps:
-      - name: Executar transacao ativa no Supabase
+      - name: Checkout do repositorio
+        uses: actions/checkout@v4
+
+      - name: Ping na API do Supabase
         run: |
           URL="${{ secrets.SUPABASE_URL }}"
           URL="${URL%/}"
           
-          # Realiza leitura direta para acordar o pool
-          HTTP_GET=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${URL}/rest/v1/config?select=id" \
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${URL}/rest/v1/config?select=id" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
-            
-          echo "Leitura REST HTTP: $HTTP_GET"
-
-          # Se o status for de sucesso (200-399), finaliza com êxito
-          if [ "$HTTP_GET" -ge 200 ] && [ "$HTTP_GET" -lt 400 ]; then
+          
+          echo "Status Supabase: $STATUS"
+          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
             echo "Ping realizado com sucesso!"
-            exit 0
           else
-            echo "Falha ao comunicar com o Supabase. Status: $HTTP_GET"
+            echo "Erro na conexao com Supabase (HTTP $STATUS)"
             exit 1
+          fi
+
+      - name: Manter repositorio ativo (previne desativacao dos 60 dias)
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Registra a data do ping no arquivo de batimento
+          echo "Ultimo ping: $(date -u)" > .github/heartbeat.txt
+          
+          git add .github/heartbeat.txt
+          # Só faz commit se houver alteração
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: heartbeat keep-alive [skip ci]"
+            git push
           fi
