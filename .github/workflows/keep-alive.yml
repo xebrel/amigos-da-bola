@@ -2,31 +2,31 @@ name: Manter Supabase Ativo
 
 on:
   schedule:
-    # Executa a cada 3 dias às 06:00 UTC (03:00 no Brasil)
-    - cron: '0 6 */3 * *'
-  workflow_dispatch: # Permite disparar manualmente para testar
+    # Executa todos os dias às 06:00 UTC (03:00 da manhã no Brasil)
+    - cron: '0 6 * * *'
+  workflow_dispatch:
 
 jobs:
   ping-supabase:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping na API do Supabase
+      - name: Executar transacao ativa no Supabase
         run: |
           URL="${{ secrets.SUPABASE_URL }}"
-          # Remove barras duplicadas no final caso existam
           URL="${URL%/}"
           
-          # Faz a consulta simples na tabela config
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${URL}/rest/v1/config?select=id" \
+          # Realiza leitura direta para acordar o pool
+          HTTP_GET=$(curl -s -o /dev/null -w "%{http_code}" -X GET "${URL}/rest/v1/config?select=id" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
-          
-          echo "Resposta HTTP do Supabase: $HTTP_STATUS"
-          
-          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
-            echo "Sucesso: Supabase consultado e ativo!"
+            
+          echo "Leitura REST HTTP: $HTTP_GET"
+
+          # Se o status for de sucesso (200-399), finaliza com êxito
+          if [ "$HTTP_GET" -ge 200 ] && [ "$HTTP_GET" -lt 400 ]; then
+            echo "Ping realizado com sucesso!"
             exit 0
           else
-            echo "Erro: Resposta inesperada ($HTTP_STATUS)"
+            echo "Falha ao comunicar com o Supabase. Status: $HTTP_GET"
             exit 1
           fi
